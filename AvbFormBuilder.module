@@ -1,0 +1,748 @@
+<?php
+
+/**
+ * Class AvbFormBuilder
+ *
+ * @TODO Checkbox, Radiobox, (Radio and Checkbox think about display items? items need a wrapper or not?)
+ * @TODO Cache System (compare forms config file timestamp with cache file) find solution for posted input values
+ *
+ * @author          : İskender TOTOĞLU, @ukyo (community), @trk (Github)
+ * @website         : http://altivebir.com.tr
+ * @projectWebsite  : https://github.com/trk/AvbFormBuilder
+ */
+class AvbFormBuilder extends WireData implements Module
+{
+    public static $language;
+
+    protected static $acceptedTypes = array(
+        'hidden',
+        'text',
+        'password',
+        'select',
+        'textarea',
+        'recaptcha',
+        'submit',
+        'button',
+        'color',
+        'date',
+        'datetime-local',
+        'email',
+        'month',
+        'number',
+        'range',
+        'search',
+        'tel',
+        'time',
+        'url',
+        'week'
+    );
+
+    public static $reCaptcha;
+    public static $Validation;
+
+    public static $HideForm=FALSE;
+    public static $FormTemplates = array(
+        'form' => array(
+            'wrapper' => array(
+                'tag' => '',
+                'attributes' => array()
+            ),
+            'attributes' => array(),
+            'template' => '{wrapper}{errors}{success}<form{attributes}>{fields}</form>{/wrapper}'
+        ),
+        'errors' => array(
+            'wrapper' => array(
+                'tag' => 'div',
+                'attributes' => array(
+                    'class' => 'errors'
+                )
+            ),
+            'title' => array(
+                'tag' => 'h4',
+                'attributes' => array(),
+                'content' => 'You have some errors, while trying to send form to us'
+            ),
+            'message' => array(
+                'tag' => 'p',
+                'attributes' => array(),
+                'content' => 'Please check the following errors...'
+            ),
+            'errors' => array(
+                'tag' => 'p',
+                'attributes' => array(),
+            ),
+            'template' => '{wrapper}{title}{message}{errors}{/wrapper}'
+        ),
+        'success' => array(
+            'wrapper' => array(
+                'tag' => 'div',
+                'attributes' => array(
+                    'class' => 'success'
+                )
+            ),
+            'title' => array(
+                'tag' => 'h4',
+                'attributes' => array(),
+                'content' => 'Your form successfully sent'
+            ),
+            'message' => array(
+                'tag' => 'p',
+                'attributes' => array(),
+                'content' => 'Thanks you, for your interest'
+            ),
+            'template' => '{wrapper}{title}{message}{/wrapper}'
+        ),
+        'row' => array(
+            'tag' => '',
+            'attributes' => array()
+        ),
+        'wrapper' => array(
+            'tag' => '',
+            'attributes' => array(),
+            'template' => '{wrapper}{label}{input}{/wrapper}',
+        ),
+        'label' => "<label{for}{attributes}>{title}</label>",
+        'inputs' => array(
+            'hidden' => '<input type="hidden"{name}{attributes} value="{value}" />',
+            'text' => '<input type="text"{name}{attributes} value="{value}" />',
+            'password' => '<input type="password"{name}{attributes} value="{value}" />',
+            'submit' => '<input type="submit"{name}{attributes} value="{value}" />',
+            'select' => '<select{name}{attributes}>{options}</select>',
+            'radio' => '<input type="radio"{name}{placeholder} value="{value}" />',  // @TODO Add method for radio box creation
+            'checkbox' => '<input type="checkbox"{name}{attributes} value="{value}" />', // @TODO Add method for checkbox creation
+            'button' => '<button type="submit"{name}{attributes} value="{value}">{value}</button>',
+            'textarea' => '<textarea{name}{attributes}>{value}</textarea>',
+            'color' => '<input type="color"{name}{attributes} value="{value}" />',
+            'date' => '<input type="date"{name}{attributes} value="{value}" />',
+            'datetime-local' => '<input type="datetime-local"{name}{attributes} value="{value}" />',
+            'email' => '<input type="email"{name}{attributes} value="{value}" />',
+            'month' => '<input type="month"{name}{attributes} value="{value}" />',
+            'number' => '<input type="number"{name}{attributes} value="{value}" />',
+            'range' => '<input type="range"{name}{attributes} value="{value}" />',
+            'search' => '<input type="search"{name}{attributes} value="{value}" />',
+            'tel' => '<input type="tel"{name}{attributes} value="{value}" />',
+            'time' => '<input type="time"{name}{attributes} value="{value}" />',
+            'url' => '<input type="url"{name}{attributes} value="{value}" />',
+            'week' => '<input type="week"{name}{attributes} value="{value}" />',
+            'recaptcha' => "{recaptcha}",
+        )
+    );
+
+    public static $Forms;
+    public static $Form;
+    public static $FormName;
+    public static $Fields = array();
+
+    /* No need
+    public static $Rules = array();
+    public static $Filters = array();
+    public static $Labels = array();
+    */
+
+    public function __construct(){}
+
+    public function init() {
+        self::$reCaptcha    = wire('modules')->get('Recaptcha');
+        self::$Validation   = wire('modules')->get('Validation');
+    }
+
+    public static function render($FormName=NULL, $currentLanguage=NULL) {
+
+        if(!is_null($FormName)) {
+
+            $FormBuilderFormsPath = wire('config')->paths->templates . DIRECTORY_SEPARATOR . 'AvbFormBuilder' . DIRECTORY_SEPARATOR . 'forms.php';
+
+            if(file_exists($FormBuilderFormsPath)) {
+
+                include($FormBuilderFormsPath);
+
+                if(isset($FormBuilderForms)) {
+                    self::$Forms = $FormBuilderForms;
+                }
+
+                if(array_key_exists($FormName, self::$Forms) && !empty(self::$Forms[$FormName])) {
+
+                    // Set Current Language
+                    if(!is_null($currentLanguage)) {
+                        self::$language = $currentLanguage;
+                    }
+
+                    self::$Form = self::$Forms[$FormName];
+
+                    // Set Custom Templates
+                    if(array_key_exists('templates', self::$Form)) {
+                        self::buildTemplates(self::$Form['templates']);
+                    }
+
+                    // Generate Fields & Labels and attach to template
+                    if(array_key_exists('fields', self::$Form) && !empty(self::$Form['fields'])) {
+
+                        $Fields = self::$Validation->setFields(self::$Form['fields']);
+
+                        // You don't have to sanitize, but it's safest to do so.
+                        $_POST = self::$Validation->sanitize($_POST);
+
+                        // Check Post Data is validated?
+                        $isValid = self::$Validation->is_valid($_POST, $Fields);
+
+                        $errors = '';
+                        $success = '';
+                        // Hide form after success
+                        if(isset(wire('input')->post) && wire('input')->post('FormName') == $FormName) {
+
+                            if(array_key_exists('g-recaptcha-response', self::$Fields)) {
+                                $recaptchaVerifyResponse = self::$reCaptcha->verifyResponse(wire('input')->post('g-recaptcha-response'));
+                                if($isValid === TRUE && !$recaptchaVerifyResponse) {
+                                    $reCaptchaAlert = (array_key_exists('alert', self::$Fields['g-recaptcha-response'])) ? self::$Fields['g-recaptcha-response']['alert'] : __('Security verification was not approved, please try again.');
+                                    $isValid = array('reCaptcha' => $reCaptchaAlert);
+                                }
+                            }
+                            if ($isValid === TRUE) {
+                                if(array_key_exists('HideForm', self::$Form)) {
+                                    self::$HideForm = self::$Form['HideForm'];
+                                }
+                                self::sendEmails();
+                                $success = self::buildSuccessWrapper();
+                            } else {
+                                $errors = self::buildErrorsWrapper($isValid);
+                            }
+                        }
+
+                        if(self::$HideForm === TRUE) {
+                            $inputs = "";
+                        } else {
+                            // Set Field Options
+                            self::$Fields   = $Fields['Fields'];
+
+                            /* No need
+                            self::$Rules    = $Fields['Rules'];
+                            self::$Filters  = $Fields['Filters'];
+                            self::$Labels   = $Fields['Labels'];
+                            */
+
+                            // Create a hidden input for called form name
+                            $formName = self::buildInputAndLabels(array(
+                                'value' => $FormName
+                            ), 'hidden', 'FormName');
+                            $inputs = $formName['input'];
+
+                            // Build form inputs
+                            $inputs .= self::buildInputs();
+                        }
+                        return self::buildFormWrapper($inputs, $errors, $success);
+                    } else {
+                        return 'Choosen form not have fields array...';
+                    }
+                } else {
+                    return 'Form name not found in forms array...';
+                }
+
+            } else {
+                return 'forms.php file not found under templates folder...';
+            }
+
+        }
+        return 'You need to give an form name...';
+    }
+
+    /**
+     * Build Inputs
+     *
+     * @return string
+     */
+    public static function buildInputs() {
+
+        $inputs = "";
+
+        // Prepare row template
+        $row = self::buildTagAndAttributes(self::$FormTemplates['row']);
+
+        foreach(self::$Fields as $key => $field) {
+
+            $type = $field['type'];
+
+            $buildField = (array_key_exists('build', $field) && $field['build'] === FALSE) ? FALSE : TRUE;
+            $hasCustomOutput = (array_key_exists('output', $field) && $field['output'] != "") ? TRUE : FALSE;
+
+            if(in_array($type, self::$acceptedTypes) && $buildField && $hasCustomOutput === FALSE)
+            {
+                if(array_key_exists('rowStart', $field) && $field['rowStart'] === TRUE) { $inputs .= $row['start']; }
+
+                $inputAndLabels= self::buildInputAndLabels($field, $type, $key);
+
+                if(is_array($inputAndLabels)) {
+                    $wrapper = (array_key_exists('wrapper', $field)) ? $field['wrapper'] : NULL;
+
+                    $inputs .= self::buildWrapper($inputAndLabels, $wrapper);
+                }
+
+                if($hasCustomOutput === TRUE) {
+                    $inputs .= $field['output'];
+                }
+
+                if(array_key_exists('rowEnd', $field) && $field['rowEnd'] === TRUE) { $inputs .= $row['end']; }
+            }
+        }
+
+        return $inputs;
+    }
+
+    /**
+     * Build Input and Input Label (if we have label)
+     * @param $field
+     * @param $type
+     * @param $key
+     * @return array|void
+     */
+    public static function buildInputAndLabels($field, $type, $key) {
+
+        // Create input name
+        $name = " name='{$key}'";
+
+        // Check if we have custom input id, if not use input name as input id
+        if(array_key_exists('attributes', $field) && empty($field['attributes']['id']) || !array_key_exists('attributes', $field)) {
+            $inputID = $key;
+            $field['attributes']['id'] = $inputID;
+        } else {
+            $inputID = $field['attributes']['id'];
+        }
+
+        // Create input attributes
+        $attributes = self::buildAttributes($field);
+
+        // Create Text Input Field
+        if(
+            $type == 'hidden' ||  $type == 'text' || $type == 'password' || $type == 'textarea' || $type == 'submit' || $type == 'button'
+            || $type == 'color' || $type == 'date' || $type == 'datetime-local' || $type == 'email' || $type == 'month' || $type == 'number'
+            || $type == 'range' || $type == 'search' || $type == 'tel' || $type == 'time' || $type == 'url' || $type == 'week'
+        ) {
+            $search  = array('{name}', '{attributes}', '{value}');
+            $replace = array($name, $attributes, $field['value']);
+            $subject = self::$FormTemplates['inputs'][$type];
+        }
+
+        // Create Select Input Field
+        if($type == 'select') {
+            $selectOptions = "";
+
+            if(array_key_exists('values', $field)) {
+                foreach($field['values'] as $k => $value) {
+                    if(is_array($value)) {
+                        $val = $value['value'];
+                        $text = (array_key_exists('text', $value)) ? $value['text'] : $val;
+                    } else {
+                        $val = $value;
+                        $text = $val;
+                    }
+                    $isSelected = ($val == $field['value']) ? " selected='selected' " : "";
+                    $selectOptions .= "<option value='{$val}'{$isSelected}>{$text}</option>";
+                }
+            }
+
+            $search  = array('{name}', '{attributes}', '{options}');
+            $replace = array($name, $attributes, $selectOptions);
+            $subject = self::$FormTemplates['inputs'][$type];
+        }
+
+        if($type == 'recaptcha') {
+            $search = array('{recaptcha}');
+            $replace = self::$reCaptcha->render(self::$language);
+            $subject = self::$FormTemplates['inputs'][$type];
+        }
+
+        if(isset($search) && isset($replace) && isset($subject)) {
+            $prepend = "";
+            if(array_key_exists('prepend', $field) && $field['prepend'] != '') {
+                $prepend = $field['prepend'];
+            }
+            $append = "";
+            if(array_key_exists('append', $field) && $field['append'] != '') {
+                $append = $field['append'];
+            }
+
+            $input = $prepend . str_replace($search, $replace, $subject) . $append;
+
+            $label = "";
+
+            if(array_key_exists('label', $field)) {
+                $label = self::buildLabel($field['label'], $inputID);
+            }
+
+            return array(
+                'input' => $input,
+                'label' => $label
+            );
+        }
+        return;
+    }
+
+    /**
+     * Build Label
+     *
+     * @param $label
+     * @param null $for
+     * @return mixed
+     */
+    public static function buildLabel($label, $for=null) {
+        $attributes="";
+        $title="";
+
+        if(is_array($label)) {
+            // Get label attributes
+            $attributes = self::buildAttributes($label);
+            // Get label title
+            if(array_key_exists('title', $label) && !empty($label['title'])) {
+                $title = $label['title'];
+            }
+        } else {
+            $title = $label;
+        }
+
+        // Create label for attribute
+        if(!is_null($for)) {
+            $for = " for='{$for}'";
+        }
+
+        $search  = array('{for}', '{attributes}', '{title}');
+        $replace = array($for, $attributes, $title);
+        $subject = self::$FormTemplates['label'];
+
+        return str_replace($search, $replace, $subject);
+    }
+
+    /**
+     * Build Form Wrapper
+     *
+     * @param $fields
+     * @param string $errors
+     * @param string $success
+     * @return mixed
+     */
+    public static function buildFormWrapper($fields, $errors='', $success='') {
+        $wrapperTag = self::$FormTemplates['form']['wrapper']['tag'];
+        $wrapperAttributes = self::$FormTemplates['form']['wrapper']['attributes'];
+
+        $wrapperTagAndAttributes = self::buildTagAndAttributes(array(
+            'tag' => $wrapperTag,
+            'attributes' => $wrapperAttributes
+        ));
+
+        $formAttributes = self::buildAttributes(self::$FormTemplates['form']);
+
+        $search  = array('{wrapper}', '{attributes}', '{errors}', '{success}', '{fields}', '{/wrapper}');
+        $replace = array($wrapperTagAndAttributes['start'], $formAttributes, $errors, $success, $fields, $wrapperTagAndAttributes['end']);
+        $subject = self::$FormTemplates['form']['template'];
+
+        return str_replace($search, $replace, $subject);
+    }
+
+    /**
+     * Build Form Errors Wrapper
+     *
+     * @param array $formErrors
+     * @return mixed
+     */
+    public static function buildErrorsWrapper($formErrors=array()) {
+
+        $wrapper = self::buildTagAndAttributes(self::$FormTemplates['errors']['wrapper']);
+        $title = self::buildTagAndAttributes(self::$FormTemplates['errors']['title'], true);
+        $message = self::buildTagAndAttributes(self::$FormTemplates['errors']['message'], true);
+        $errors = self::buildTagAndAttributes(self::$FormTemplates['errors']['errors']);
+
+        $errorsTemplate = "";
+        if(!empty($formErrors)) {
+            foreach($formErrors as $error) {
+                $errorsTemplate .= $errors['start'] . $error . $errors['end'];
+            }
+        }
+
+        $search  = array('{wrapper}', '{title}', '{message}', '{errors}', '{/wrapper}');
+        $replace = array($wrapper['start'], $title, $message, $errorsTemplate, $wrapper['end']);
+        $subject = self::$FormTemplates['errors']['template'];
+
+        return str_replace($search, $replace, $subject);
+    }
+
+    /**
+     * Build Form Success Wrapper
+     *
+     * @return mixed
+     */
+    public static function buildSuccessWrapper() {
+        $wrapper = self::buildTagAndAttributes(self::$FormTemplates['success']['wrapper']);
+        $title = self::buildTagAndAttributes(self::$FormTemplates['success']['title'], true);
+        $message = self::buildTagAndAttributes(self::$FormTemplates['success']['message'], true);
+
+        $search  = array('{wrapper}', '{title}', '{message}', '{/wrapper}');
+        $replace = array($wrapper['start'], $title, $message, $wrapper['end']);
+        $subject = self::$FormTemplates['success']['template'];
+
+        return str_replace($search, $replace, $subject);
+    }
+
+    /**
+     * Build Input and Label Wrapper
+     *
+     * @param $inputAndLabels
+     * @param null $wrapper
+     * @return mixed
+     */
+    public static function buildWrapper($inputAndLabels, $wrapper=NULL) {
+        $tag = (!is_null($wrapper) && array_key_exists('tag', $wrapper)) ? $wrapper['tag'] : self::$FormTemplates['wrapper']['tag'];
+        $attributes = (!is_null($wrapper) && array_key_exists('attributes', $wrapper)) ? $wrapper['attributes'] : self::$FormTemplates['wrapper']['attributes'];
+
+        $tagAndAttributes = self::buildTagAndAttributes(array(
+            'tag' => $tag,
+            'attributes' => $attributes
+        ));;
+        $template = (!is_null($wrapper) && array_key_exists('template', $wrapper)) ? $wrapper['template'] : self::$FormTemplates['wrapper']['template'];
+
+        $search  = array('{wrapper}', '{label}', '{input}', '{/wrapper}');
+        $replace = array($tagAndAttributes['start'], $inputAndLabels['label'], $inputAndLabels['input'], $tagAndAttributes['end']);
+        $subject = $template;
+
+        return str_replace($search, $replace, $subject);
+    }
+
+    /**
+     * Build Given Tag and Tag Attributes
+     *
+     * @param array $tagAndAttributes
+     * @param bool $string
+     * @return array|string
+     */
+    public static function buildTagAndAttributes($tagAndAttributes=array(), $string=false) {
+        $start = '';
+        $end = '';
+        $content = '';
+
+        if(array_key_exists('tag', $tagAndAttributes)) {
+            $tag = $tagAndAttributes['tag'];
+            $attributes = self::buildAttributes($tagAndAttributes);
+            $start = "<{$tag}{$attributes}>";
+            $end = "</{$tag}>";
+
+            if(array_key_exists('content', $tagAndAttributes)) {
+                $content = $tagAndAttributes['content'];
+            }
+        }
+
+        if($string === true) {
+            return $start . $content . $end;
+        }
+
+        return array(
+            'start' => $start,
+            'end' => $end,
+            'content' => $content
+        );
+    }
+
+    /**
+     * Generate Attributes Array or String
+     *
+     * @param $item
+     * @param bool $array | if true output will be array
+     * @return array|string
+     */
+    public static function buildAttributes($item, $array=false) {
+        if(array_key_exists('attributes', $item)) {
+            if($array === true) {
+                return $item['attributes'];
+            } else {
+                $attributes = '';
+                foreach($item['attributes'] as $key => $attr) {
+                    $attributes .= ' ' . $key . '="' . $attr . '"';
+                }
+
+                return $attributes;
+            }
+        }
+
+        if($array === true) {
+            return array();
+        }
+
+        return "";
+    }
+
+    /**
+     * Build default templates and attributes
+     *
+     * @param $FormBuilderTemplates
+     */
+    public static function buildTemplates($FormBuilderTemplates) {
+        // Set default form options
+        if(array_key_exists('form', $FormBuilderTemplates)) {
+            if(array_key_exists('wrapper', $FormBuilderTemplates['form'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['form']['wrapper'])) {
+                    self::$FormTemplates['form']['wrapper']['tag'] = $FormBuilderTemplates['form']['wrapper']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['form']['wrapper'])) {
+                    self::$FormTemplates['form']['wrapper']['attributes'] = $FormBuilderTemplates['form']['wrapper']['attributes'];
+                }
+            }
+            if(array_key_exists('attributes', $FormBuilderTemplates['form'])) {
+                self::$FormTemplates['form']['attributes'] = $FormBuilderTemplates['form']['attributes'];
+            }
+            if(array_key_exists('template', $FormBuilderTemplates['form'])) {
+                self::$FormTemplates['form']['template'] = $FormBuilderTemplates['form']['template'];
+            }
+        }
+        // Set default form error options
+        if(array_key_exists('errors', $FormBuilderTemplates)) {
+            // Errors wrapper : tag, attributes
+            if(array_key_exists('wrapper', $FormBuilderTemplates['errors'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['errors']['wrapper'])) {
+                    self::$FormTemplates['errors']['wrapper']['tag'] = $FormBuilderTemplates['errors']['wrapper']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['errors']['wrapper'])) {
+                    self::$FormTemplates['errors']['wrapper']['attributes'] = $FormBuilderTemplates['errors']['wrapper']['attributes'];
+                }
+            }
+            // Errors title : tag, attributes, content
+            if(array_key_exists('title', $FormBuilderTemplates['errors'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['errors']['title'])) {
+                    self::$FormTemplates['errors']['title']['tag'] = $FormBuilderTemplates['errors']['title']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['errors']['title'])) {
+                    self::$FormTemplates['errors']['title']['attributes'] = $FormBuilderTemplates['errors']['title']['attributes'];
+                }
+                if(array_key_exists('content', $FormBuilderTemplates['errors']['title'])) {
+                    self::$FormTemplates['errors']['title']['content'] = $FormBuilderTemplates['errors']['title']['content'];
+                }
+            }
+            // Error message : tag, attributes, content
+            if(array_key_exists('message', $FormBuilderTemplates['errors'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['errors']['message'])) {
+                    self::$FormTemplates['errors']['message']['tag'] = $FormBuilderTemplates['errors']['message']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['errors']['message'])) {
+                    self::$FormTemplates['errors']['message']['attributes'] = $FormBuilderTemplates['errors']['message']['attributes'];
+                }
+                if(array_key_exists('content', $FormBuilderTemplates['errors']['title'])) {
+                    self::$FormTemplates['errors']['message']['content'] = $FormBuilderTemplates['errors']['message']['content'];
+                }
+            }
+            // Error errors : tag, attributes
+            if(array_key_exists('errors', $FormBuilderTemplates['errors'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['errors']['errors'])) {
+                    self::$FormTemplates['errors']['errors']['tag'] = $FormBuilderTemplates['errors']['errors']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['errors']['errors'])) {
+                    self::$FormTemplates['errors']['errors']['attributes'] = $FormBuilderTemplates['errors']['errors']['attributes'];
+                }
+            }
+            // Error template
+            if(array_key_exists('template', $FormBuilderTemplates['errors'])) {
+                self::$FormTemplates['errors']['template'] = $FormBuilderTemplates['errors']['template'];
+            }
+        }
+        // Set default form success options
+        if(array_key_exists('success', $FormBuilderTemplates)) {
+            // Success wrapper : tag, attributes
+            if(array_key_exists('wrapper', $FormBuilderTemplates['success'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['success']['wrapper'])) {
+                    self::$FormTemplates['success']['wrapper']['tag'] = $FormBuilderTemplates['success']['wrapper']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['success']['wrapper'])) {
+                    self::$FormTemplates['success']['wrapper']['attributes'] = $FormBuilderTemplates['success']['wrapper']['attributes'];
+                }
+            }
+            if(array_key_exists('title', $FormBuilderTemplates['success'])) {
+                // Success title : tag, attributes, content
+                if(array_key_exists('tag', $FormBuilderTemplates['success']['title'])) {
+                    self::$FormTemplates['success']['title']['tag'] = $FormBuilderTemplates['success']['title']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['success']['title'])) {
+                    self::$FormTemplates['success']['title']['attributes'] = $FormBuilderTemplates['success']['title']['attributes'];
+                }
+                if(array_key_exists('content', $FormBuilderTemplates['success']['title'])) {
+                    self::$FormTemplates['success']['title']['content'] = $FormBuilderTemplates['success']['title']['content'];
+                }
+            }
+            // Success message : tag, attributes, content
+            if(array_key_exists('message', $FormBuilderTemplates['success'])) {
+                if(array_key_exists('tag', $FormBuilderTemplates['success']['message'])) {
+                    self::$FormTemplates['success']['message']['tag'] = $FormBuilderTemplates['success']['message']['tag'];
+                }
+                if(array_key_exists('attributes', $FormBuilderTemplates['success']['message'])) {
+                    self::$FormTemplates['success']['message']['attributes'] = $FormBuilderTemplates['success']['message']['attributes'];
+                }
+                if(array_key_exists('content', $FormBuilderTemplates['success']['message'])) {
+                    self::$FormTemplates['success']['message']['content'] = $FormBuilderTemplates['success']['message']['content'];
+                }
+            }
+            // Success Template
+            if(array_key_exists('template', $FormBuilderTemplates['success'])) {
+                self::$FormTemplates['success']['template'] = $FormBuilderTemplates['success']['template'];
+            }
+        }
+        // Set default row options
+        if(array_key_exists('row', $FormBuilderTemplates)) {
+            if(array_key_exists('tag', $FormBuilderTemplates['row'])) {
+                self::$FormTemplates['row']['tag'] = $FormBuilderTemplates['row']['tag'];
+            }
+            if(array_key_exists('attributes', $FormBuilderTemplates['row'])) {
+                self::$FormTemplates['row']['attributes'] = $FormBuilderTemplates['row']['attributes'];
+            }
+            if(array_key_exists('template', $FormBuilderTemplates['row'])) {
+                self::$FormTemplates['row']['template'] = $FormBuilderTemplates['row']['template'];
+            }
+        }
+        // Set default wrapper options
+        if(array_key_exists('wrapper', $FormBuilderTemplates)) {
+            if(array_key_exists('tag', $FormBuilderTemplates['wrapper'])) {
+                self::$FormTemplates['wrapper']['tag'] = $FormBuilderTemplates['wrapper']['tag'];
+            }
+            if(array_key_exists('attributes', $FormBuilderTemplates['wrapper'])) {
+                self::$FormTemplates['wrapper']['attributes'] = $FormBuilderTemplates['wrapper']['attributes'];
+            }
+            if(array_key_exists('template', $FormBuilderTemplates['wrapper'])) {
+                self::$FormTemplates['wrapper']['template'] = $FormBuilderTemplates['wrapper']['template'];
+            }
+        }
+    }
+
+    /**
+     * Send Form Emails to given addresses
+     */
+    public static function sendEmails() {
+
+        if(array_key_exists('emails', self::$Form) && array_key_exists('from', self::$Form['emails'])) {
+            $from = self::$Form['emails']['from'];
+            $subject = "";
+            $prepend = "";
+            $append = "";
+            foreach(self::$Form['emails'] as $key => $email) {
+                if($key != 'from' && array_key_exists('to', $email)) {
+                    if(array_key_exists('subject', $email)) {
+                        $subject = $email['subject'];
+                    }
+                    if(array_key_exists('prepend', $email)) {
+                        $prepend = $email['prepend'] . "\n";
+                    }
+                    if(array_key_exists('append', $email)) {
+                        $append = $email['append'] . "\n";
+                    }
+                    if(array_key_exists('message', $email)) {
+                        $message = $email['message'];
+                    } else {
+                        $message = "";
+                        foreach(self::$Fields as $key => $field) {
+                            if(array_key_exists('email', $field) && $field['email'] != FALSE) {
+                                $message .= "{$field['label']}  : {$field['value']}\n";
+                            }
+                        }
+                    }
+
+                    $message .= $prepend . $message . $append;
+
+                    wireMail($email['to'], $from, $subject, $message);
+                }
+            }
+        }
+
+        return;
+    }
+}
