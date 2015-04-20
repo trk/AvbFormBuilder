@@ -37,8 +37,8 @@ class AvbFormBuilder extends WireData implements Module
         'week'
     );
 
-    public static $reCaptcha;
-    public static $Validation;
+    public static $AvbRecaptcha;
+    public static $AvbValidation;
 
     public static $HideForm=FALSE;
     public static $NoClearValueFieldTypes = array(
@@ -145,11 +145,32 @@ class AvbFormBuilder extends WireData implements Module
     public static $Labels = array();
     */
 
+    /**
+     * getModuleInfo is a module required by all modules to tell ProcessWire about them
+     *
+     * @return array
+     *
+     */
+    public static function getModuleInfo()
+    {
+        return array(
+            'title' => 'AvbFormBuilder',
+            'summary' => 'Alti ve Bir Form Builder is a config file based form builder. Module also need Validation module.',
+            'version' => 1,
+            'author' => 'İskender TOTOĞLU | @ukyo(community), @trk (Github), http://altivebir.com.tr',
+            'href' => 'https://github.com/trk/AvbFormBuilder',
+            'icon' => 'check-square-o',
+            'requires' => 'ProcessWire>=2.5.10,AvbValidation,AvbRecaptcha',
+            'installs' => 'AvbValidation,AvbRecaptcha',
+            'uninstalls' => 'AvbValidation,AvbRecaptcha'
+        );
+    }
+
     public function __construct(){}
 
     public function init() {
-        self::$reCaptcha    = wire('modules')->get('Recaptcha');
-        self::$Validation   = wire('modules')->get('Validation');
+        self::$AvbRecaptcha    = wire('modules')->get('AvbRecaptcha');
+        self::$AvbValidation   = wire('modules')->get('AvbValidation');
     }
 
     public static function render($FormName=NULL, $currentLanguage=NULL) {
@@ -187,7 +208,7 @@ class AvbFormBuilder extends WireData implements Module
                     // Generate Fields & Labels and attach to template
                     if(array_key_exists('fields', self::$Form) && !empty(self::$Form['fields'])) {
 
-                        $Fields = self::$Validation->setFields(self::$Form['fields']);
+                        $Fields = self::$AvbValidation->setFields(self::$Form['fields']);
 
                         // Set Field Options
                         self::$Fields   = $Fields['Fields'];
@@ -198,15 +219,15 @@ class AvbFormBuilder extends WireData implements Module
                         self::$Labels   = $Fields['Labels'];
                         */
                         // You don't have to sanitize, but it's safest to do so.
-                        $_POST = self::$Validation->sanitize($_POST);
+                        $_POST = self::$AvbValidation->sanitize($_POST);
                         // Check Post Data is validated?
-                        $isValid = self::$Validation->is_valid($_POST, $Fields);
+                        $isValid = self::$AvbValidation->is_valid($_POST, $Fields);
                         $errors = '';
                         $success = '';
                         // Hide form after success
                         if(isset(wire('input')->post) && wire('input')->post('FormName') == $FormName) {
                             if(array_key_exists('g-recaptcha-response', self::$Fields)) {
-                                $recaptchaVerifyResponse = self::$reCaptcha->verifyResponse(wire('input')->post('g-recaptcha-response'));
+                                $recaptchaVerifyResponse = self::$AvbRecaptcha->verifyResponse(wire('input')->post('g-recaptcha-response'));
                                 if($isValid === TRUE && !$recaptchaVerifyResponse) {
                                     $reCaptchaAlert = (array_key_exists('alert', self::$Fields['g-recaptcha-response'])) ? self::$Fields['g-recaptcha-response']['alert'] : __('Security verification was not approved, please try again.');
                                     $isValid = array('reCaptcha' => $reCaptchaAlert);
@@ -340,7 +361,7 @@ class AvbFormBuilder extends WireData implements Module
 
         if($type == 'recaptcha') {
             $search = array('{recaptcha}');
-            $replace = self::$reCaptcha->render(self::$language);
+            $replace = self::$AvbRecaptcha->render(self::$language);
             $subject = self::$FormTemplates['inputs'][$type];
         }
 
