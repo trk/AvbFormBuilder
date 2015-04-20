@@ -41,6 +41,9 @@ class AvbFormBuilder extends WireData implements Module
     public static $Validation;
 
     public static $HideForm=FALSE;
+    public static $NoClearValueFieldTypes = array(
+        'button', 'submit'
+    );
     public static $FormTemplates = array(
         'form' => array(
             'wrapper' => array(
@@ -128,10 +131,13 @@ class AvbFormBuilder extends WireData implements Module
         )
     );
 
+    public static $emailFrom=NULL;
     public static $Forms;
     public static $Form;
     public static $FormName;
     public static $Fields = array();
+
+    public static $isValid=FALSE;
 
     /* No need
     public static $Rules = array();
@@ -150,14 +156,14 @@ class AvbFormBuilder extends WireData implements Module
 
         if(!is_null($FormName)) {
 
-            $FormBuilderFormsPath = wire('config')->paths->templates . DIRECTORY_SEPARATOR . 'AvbFormBuilder' . DIRECTORY_SEPARATOR . 'forms.php';
+            $AvbFormBuilderFormsPath = wire('config')->paths->templates . DIRECTORY_SEPARATOR . 'AvbFormBuilder' . DIRECTORY_SEPARATOR . 'forms.php';
 
-            if(file_exists($FormBuilderFormsPath)) {
+            if(file_exists($AvbFormBuilderFormsPath)) {
 
-                include($FormBuilderFormsPath);
+                include($AvbFormBuilderFormsPath);
 
-                if(isset($FormBuilderForms)) {
-                    self::$Forms = $FormBuilderForms;
+                if(isset($AvbFormBuilderForms)) {
+                    self::$Forms = $AvbFormBuilderForms;
                 }
 
                 if(array_key_exists($FormName, self::$Forms) && !empty(self::$Forms[$FormName])) {
@@ -169,6 +175,10 @@ class AvbFormBuilder extends WireData implements Module
 
                     self::$Form = self::$Forms[$FormName];
 
+                    if(isset(self::$Form['emailFrom'])) {
+                        self::$emailFrom = self::$Form['emailFrom'];
+                    }
+
                     // Set Custom Templates
                     if(array_key_exists('templates', self::$Form)) {
                         self::buildTemplates(self::$Form['templates']);
@@ -179,17 +189,22 @@ class AvbFormBuilder extends WireData implements Module
 
                         $Fields = self::$Validation->setFields(self::$Form['fields']);
 
+                        // Set Field Options
+                        self::$Fields   = $Fields['Fields'];
+
+                        /* No need
+                        self::$Rules    = $Fields['Rules'];
+                        self::$Filters  = $Fields['Filters'];
+                        self::$Labels   = $Fields['Labels'];
+                        */
                         // You don't have to sanitize, but it's safest to do so.
                         $_POST = self::$Validation->sanitize($_POST);
-
                         // Check Post Data is validated?
                         $isValid = self::$Validation->is_valid($_POST, $Fields);
-
                         $errors = '';
                         $success = '';
                         // Hide form after success
                         if(isset(wire('input')->post) && wire('input')->post('FormName') == $FormName) {
-
                             if(array_key_exists('g-recaptcha-response', self::$Fields)) {
                                 $recaptchaVerifyResponse = self::$reCaptcha->verifyResponse(wire('input')->post('g-recaptcha-response'));
                                 if($isValid === TRUE && !$recaptchaVerifyResponse) {
@@ -198,6 +213,7 @@ class AvbFormBuilder extends WireData implements Module
                                 }
                             }
                             if ($isValid === TRUE) {
+                                self::$isValid = TRUE;
                                 if(array_key_exists('HideForm', self::$Form)) {
                                     self::$HideForm = self::$Form['HideForm'];
                                 }
@@ -207,25 +223,14 @@ class AvbFormBuilder extends WireData implements Module
                                 $errors = self::buildErrorsWrapper($isValid);
                             }
                         }
-
                         if(self::$HideForm === TRUE) {
                             $inputs = "";
                         } else {
-                            // Set Field Options
-                            self::$Fields   = $Fields['Fields'];
-
-                            /* No need
-                            self::$Rules    = $Fields['Rules'];
-                            self::$Filters  = $Fields['Filters'];
-                            self::$Labels   = $Fields['Labels'];
-                            */
-
                             // Create a hidden input for called form name
                             $formName = self::buildInputAndLabels(array(
                                 'value' => $FormName
                             ), 'hidden', 'FormName');
                             $inputs = $formName['input'];
-
                             // Build form inputs
                             $inputs .= self::buildInputs();
                         }
@@ -236,11 +241,9 @@ class AvbFormBuilder extends WireData implements Module
                 } else {
                     return 'Form name not found in forms array...';
                 }
-
             } else {
                 return 'forms.php file not found under templates folder...';
             }
-
         }
         return 'You need to give an form name...';
     }
@@ -251,39 +254,30 @@ class AvbFormBuilder extends WireData implements Module
      * @return string
      */
     public static function buildInputs() {
-
         $inputs = "";
-
         // Prepare row template
         $row = self::buildTagAndAttributes(self::$FormTemplates['row']);
-
         foreach(self::$Fields as $key => $field) {
-
             $type = $field['type'];
-
             $buildField = (array_key_exists('build', $field) && $field['build'] === FALSE) ? FALSE : TRUE;
             $hasCustomOutput = (array_key_exists('output', $field) && $field['output'] != "") ? TRUE : FALSE;
-
             if(in_array($type, self::$acceptedTypes) && $buildField && $hasCustomOutput === FALSE)
             {
+                if(self::$isValid === TRUE && !in_array($type, self::$NoClearValueFieldTypes)) {
+                    $field['value'] = "";
+                }
                 if(array_key_exists('rowStart', $field) && $field['rowStart'] === TRUE) { $inputs .= $row['start']; }
-
                 $inputAndLabels= self::buildInputAndLabels($field, $type, $key);
-
                 if(is_array($inputAndLabels)) {
                     $wrapper = (array_key_exists('wrapper', $field)) ? $field['wrapper'] : NULL;
-
                     $inputs .= self::buildWrapper($inputAndLabels, $wrapper);
                 }
-
                 if($hasCustomOutput === TRUE) {
                     $inputs .= $field['output'];
                 }
-
                 if(array_key_exists('rowEnd', $field) && $field['rowEnd'] === TRUE) { $inputs .= $row['end']; }
             }
         }
-
         return $inputs;
     }
 
@@ -708,14 +702,20 @@ class AvbFormBuilder extends WireData implements Module
      * Send Form Emails to given addresses
      */
     public static function sendEmails() {
-
-        if(array_key_exists('emails', self::$Form) && array_key_exists('from', self::$Form['emails'])) {
-            $from = self::$Form['emails']['from'];
-            $subject = "";
-            $prepend = "";
-            $append = "";
+        if(!is_null(self::$emailFrom)) {
+            $from = self::$emailFrom;
             foreach(self::$Form['emails'] as $key => $email) {
-                if($key != 'from' && array_key_exists('to', $email)) {
+                $subject = "";
+                $message = "";
+                $prepend = "";
+                $append = "";
+                if(isset($email['to'])) {
+                    $to = $email['to'];
+                }
+                if(!isset($to) && isset($email['to::input']) && isset(self::$Fields[$email['to::input']])) {
+                    $to = self::$Fields[$email['to::input']]['value'];
+                }
+                if(isset($to)) {
                     if(array_key_exists('subject', $email)) {
                         $subject = $email['subject'];
                     }
@@ -728,21 +728,21 @@ class AvbFormBuilder extends WireData implements Module
                     if(array_key_exists('message', $email)) {
                         $message = $email['message'];
                     } else {
-                        $message = "";
                         foreach(self::$Fields as $key => $field) {
-                            if(array_key_exists('email', $field) && $field['email'] != FALSE) {
+                            $fieldToMessage = TRUE;
+                            if(isset($field['email']) && $field['email'] === FALSE) {
+                                $fieldToMessage = FALSE;
+                            }
+                            if($fieldToMessage) {
                                 $message .= "{$field['label']}  : {$field['value']}\n";
                             }
                         }
                     }
-
-                    $message .= $prepend . $message . $append;
-
-                    wireMail($email['to'], $from, $subject, $message);
+                    $msg = $prepend . $message . $append;
+                    wireMail($to, $from, $subject, $msg);
                 }
             }
         }
-
         return;
     }
 }
