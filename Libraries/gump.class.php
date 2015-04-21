@@ -420,7 +420,7 @@ class GUMP
             'toString' => ((!empty($options['toString'])) ? true : false)
         );
 
-        return wire('modules')->get('Validation')->_get_readable_errors(
+        return wire('modules')->get('AvbValidation')->_get_readable_errors(
             $options,
             $this->errors,
             self::$fields,
@@ -710,7 +710,7 @@ class GUMP
 
 		$param = trim(strtolower($param));
 
-		$value = trim(strtolower($input[$field]));
+        $value = (array_key_exists($field, $input)) ? trim(strtolower($input[$field])) : "";
 
 		if (preg_match_all('#\'(.+?)\'#', $param, $matches, PREG_PATTERN_ORDER)) {
 			$param = $matches[1];
@@ -745,8 +745,8 @@ class GUMP
 	protected function validate_containsList($field, $input, $param = NULL)
 	{
 		$param = trim(strtolower($param));
-	
-		$value = trim(strtolower($input[$field]));
+
+		$value = (array_key_exists($field, $input)) ? trim(strtolower($input[$field])) : "";
 	
 		$param = explode(";", $param);
 		
@@ -780,8 +780,8 @@ class GUMP
 	protected function validate_doesNotContainList($field, $input, $param = NULL)
 	{
 		$param = trim(strtolower($param));
-	
-		$value = trim(strtolower($input[$field]));
+
+        $value = (array_key_exists($field, $input)) ? trim(strtolower($input[$field])) : "";
 	
 		$param = explode(";", $param);
 				
@@ -810,7 +810,7 @@ class GUMP
 	 */
 	protected function validate_required($field, $input, $param = NULL)
 	{
-    if(isset($input[$field]) && ($input[$field] === false || $input[$field] === 0 || $input[$field] === 0.0 || $input[$field] === "0" || !empty($input[$field])))
+        if(isset($input[$field]) && ($input[$field] === false || $input[$field] === 0 || $input[$field] === 0.0 || $input[$field] === "0" || !empty($input[$field])))
 		{
 			return;
 		}

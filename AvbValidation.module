@@ -193,7 +193,7 @@ class AvbValidation extends WireData implements Module
         foreach($errors as $e) {
 
             $translations = self::translations();
-            
+
             $field = ucwords(str_replace($this->fieldCharsToRemove, chr(32), $e['field']));
 
             // Let's fetch explicit field names if they exist
@@ -207,7 +207,16 @@ class AvbValidation extends WireData implements Module
             }
 
             $field = "<span class='{$fieldClass}'>{$field}</span>";
-            $param = "<span class='{$fieldWarningClass}'>{$e['param']}</span>";
+
+            if(is_array($e['param'])) {
+                $eparam = $e['param'][0];
+            } else {
+                $eparam = $e['param'];
+            }
+
+            $param = "<span class='{$fieldWarningClass}'>{$eparam}</span>";
+
+            // echo '<pre>'; print_r($e['param']); echo '</pre>';
 
             switch($e['rule']) {
                 case 'mismatch' :
