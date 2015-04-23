@@ -5,7 +5,7 @@
  *
  * @author          : İskender TOTOĞLU, @ukyo (community), @trk (Github)
  * @website         : http://altivebir.com.tr
- * @projectWebsite  : https://github.com/trk/Validation
+ * @projectWebsite  : https://github.com/trk/AvbFormBuilder
  */
 class AvbValidation extends WireData implements Module
 {

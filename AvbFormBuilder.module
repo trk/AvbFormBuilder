@@ -176,7 +176,7 @@ class AvbFormBuilder extends WireData implements Module
     public static function render($FormName=NULL, $currentLanguage=NULL) {
 
         if(!is_null($FormName)) {
-
+            self::$FormName = $FormName;
             $AvbFormBuilderFormsPath = wire('config')->paths->templates . DIRECTORY_SEPARATOR . 'AvbFormBuilder' . DIRECTORY_SEPARATOR . 'forms.php';
 
             if(file_exists($AvbFormBuilderFormsPath)) {
@@ -726,6 +726,7 @@ class AvbFormBuilder extends WireData implements Module
         if(!is_null(self::$emailFrom)) {
             $from = self::$emailFrom;
             foreach(self::$Form['emails'] as $key => $email) {
+                $to = "";
                 $subject = "";
                 $message = "";
                 $prepend = "";
@@ -733,10 +734,10 @@ class AvbFormBuilder extends WireData implements Module
                 if(isset($email['to'])) {
                     $to = $email['to'];
                 }
-                if(!isset($to) && isset($email['to::input']) && isset(self::$Fields[$email['to::input']])) {
+                if(isset($email['to::input']) && isset(self::$Fields[$email['to::input']])) {
                     $to = self::$Fields[$email['to::input']]['value'];
                 }
-                if(isset($to)) {
+                if($to != "") {
                     if(array_key_exists('subject', $email)) {
                         $subject = $email['subject'];
                     }
@@ -759,8 +760,13 @@ class AvbFormBuilder extends WireData implements Module
                             }
                         }
                     }
+
                     $msg = $prepend . $message . $append;
                     wireMail($to, $from, $subject, $msg);
+                    /*
+                    $FromName = self::$FormName;
+                    wire('log')->save('messages', "AvbFormBuilder::sendEmails() :: Form Name: {$FromName}, From: {$from}, To: {$to}, Subject: {$subject}, Message: {$msg}");
+                    */
                 }
             }
         }

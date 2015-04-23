@@ -5,7 +5,7 @@
  *
  * @author          : İskender TOTOĞLU, @ukyo (community), @trk (Github)
  * @website         : http://altivebir.com.tr
- * @projectWebsite  : https://github.com/trk/Recaptcha
+ * @projectWebsite  : https://github.com/trk/AvbFormBuilder
  */
 class AvbRecaptcha extends WireData implements Module, ConfigurableModule {
 
